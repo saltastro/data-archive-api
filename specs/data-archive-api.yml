@@ -1,1 +1,176 @@
 openapi: "3.0.0"
+
+info:
+  title: SAAO/SALT data archive API
+  version: "0.1.0"
+
+tags:
+  - name: observations
+    description:
+      Observations including acquisition, science and calibration files
+  - name: files
+    description: FITS files
+  - name: data requests
+    description: Requests for FITS files
+  - name: users
+    description: Registered users of the data archive
+  - name: linked accounts
+    description: >
+      Accounts for telescope user accounts, such as the
+      [SALT Web Manager](https://www.salt.ac.za)
+
+paths:
+  /observations/search:
+    post:
+      tags: [observations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationSearch'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observation'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  responses:
+    # HTTP 400 error
+    BadRequest:
+      description: The request was incorrect
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    # HTTP 404 error
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    # error
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+      required:
+        - message
+
+    # identifier
+    Id:
+      type: string
+      description: Unique identifier
+
+    # FITS file details
+    File:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          description: Filename
+        metadata:
+          type: object
+          properties:
+            target:
+              type: object
+              properties:
+                ra:
+                  type: number
+                  minimum: 0
+                  maximum: 360
+                  description: Right ascension as degrees between 0 and 360.
+                dec:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                  description: Declination as degrees between -90 and 90.
+                type:
+                  type: string
+                  description: Target type
+          additionalProperties: true
+        fits_headers:
+          type: string
+          description: FITS headers, exactly as included in the file
+        thumbnail:
+          type: string
+          format: byte
+          description: Base64-encoded thumbnail image
+      required:
+        - id
+        - name
+        - metadata
+
+    # observation search parameter
+    ObservationSearchParam:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: Search keyword
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+          description: Search value
+        operator:
+          type: string
+          enum: ['=', '!=', '<', '>', '<=', '>=', 'LIKE']
+          description: SQL operator `OP` for the relation `keyword` `OP` `value`
+      required:
+        - keyword
+        - value
+        - operator
+
+    # observation search parameters
+    ObservationSearch:
+      type: object
+      properties:
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationSearchParam'
+          description: search parameters
+        limit:
+          type: integer
+          minimum: 1
+          description: Maximum number of search results to return
+      required:
+        - parameters
+
+    # observation
+    Observation:
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          description: Human-friendly name of the observation
+        available_from:
+          type: string
+          format: date
+          description: When the data of the observation becomes available to the user
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/File'
+          description: FITS files taken during the observation
+      required:
+        - id
+        - name
+        - available_from
+        - files
