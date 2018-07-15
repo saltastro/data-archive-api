@@ -18,10 +18,15 @@ tags:
     description: >
       Accounts for telescope user accounts, such as the
       [SALT Web Manager](https://www.salt.ac.za)
+  - name: miscellaneous
+    description: Miscellaneous API endpoints
 
 paths:
   /observations/search:
     post:
+      summary: Observation search
+      description: >
+        Search for observations using a set of search parameters.
       tags: [observations]
       requestBody:
         required: true
@@ -35,15 +40,356 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Observation'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Observation'
         "400":
-          $ref: '#/components/responses/BadRequest'
+          description: A search parameter has an invalid value or operator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /files/{file_id}:
+    parameters:
+      - name: file_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Identifier of the requested file
+    get:
+      summary: Data file
+      description: >
+        Get metadata for a FITS data file specified by its identifier.
+      tags: [files]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /calibrations/search:
+    post:
+      summary: Calibration search
+      description: >
+        Search for additional calibrations (standards) which can be used for an observation
+        but do not belong to the observation itself.
+      tags: [files]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                for_observations:
+                  type: array
+                  items:
+                    type: string
+                  description: >
+                    Identifiers of the observations for which additional calibrations are
+                    requested
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/File'
+        "400":
+          description: Some of the observation identifiers do not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-requests:
+    get:
+      summary: Data request
+      description: >
+        Get the data requests made by the user. The number may be limited, and if so, the
+        latest requests are returned.
+      tags: [data requests]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: 'Data request for FITS files'
+      description: >
+        Make a data request for downloading a set of FITS files
+      tags: [data requests]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URI of the new data request
+              schema:
+                type: string
+                format: URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRequest'
+        "400":
+          description: Some of the observation or file identifiers do not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /data-requests/{request_id}:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Identifier of the deleted data request
+    delete:
+      summary: Delete the data request
+      description: >
+        Do not request the files in this data request any longer. If the same files are
+        included in another request, they will still be requested as part of that request.
+      tags: [data requests]
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: The request was deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users:
+    post:
+      summary: Register a user
+      description: Register a new user of the data archive
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URI for the newly registered user
+              schema:
+                type: string
+                format: URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: The username exists already or the password is too weak
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User identifier
+    patch:
+      summary: Update a user
+      description: Update some details of a data archive user
+      tags: [users]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPatch'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: The username exists already or the password is too weak
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: User
+      description: Get the details of a data archive user
+      tags: [users]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /linked-accounts:
+    get:
+      summary: Linked accounts for the user
+      description: Get the linked accounts for the user
+      tags: [linked accounts]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LinkedAccount'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Link an account
+      description: Link an account for the user
+      tags: [linked accounts]
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedAccount'
+        "400":
+          description: >
+            The authentication credentials for the linked account are invalid, or the
+            account has been linked already.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /linked-accounts/{linked_account_id}:
+    parameters:
+      - name: linked_account_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Linked account identifier
+
+    delete:
+      summary: Unlink the account
+      description: Unklink the linked account
+      tags: [linked accounts]
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Unlinked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /data-providers:
+    get:
+      summary: Data providers
+      description: Providers of data for the data archive
+      tags: [miscellaneous]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataProvider'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
   responses:
-    # HTTP 400 error
-    BadRequest:
-      description: The request was incorrect
+    # HTTP 401 error
+    Unauthorized:
+      description: The request did not include valid authentication credentials
+      headers:
+        'WWW-Authenticate':
+          schema:
+            type: string
+            description: Information o how to authenticate correctly
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    # HTTP 403 error
+    Forbidden:
+      description: The request is not allowed for the user
       content:
         application/json:
           schema:
@@ -68,17 +414,13 @@ components:
       required:
         - message
 
-    # identifier
-    Id:
-      type: string
-      description: Unique identifier
-
     # FITS file details
     File:
       type: object
       properties:
         id:
-          $ref: '#/components/schemas/Id'
+          type: string
+          description: File identifier
         name:
           type: string
           description: Filename
@@ -104,6 +446,7 @@ components:
           additionalProperties: true
         fits_headers:
           type: string
+
           description: FITS headers, exactly as included in the file
         thumbnail:
           type: string
@@ -156,13 +499,14 @@ components:
     Observation:
       properties:
         id:
-          $ref: '#/components/schemas/Id'
+          type: string
+          description: Observation identifier
         name:
           type: string
           description: Human-friendly name of the observation
         available_from:
           type: string
-          format: date
+          format: date-time
           description: When the data of the observation becomes available to the user
         files:
           type: array
@@ -174,3 +518,150 @@ components:
         - name
         - available_from
         - files
+
+    # data request
+    DataRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Data request identifier
+        observations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Observation identifier
+              name:
+                type: string
+                readOnly: true
+                description: Observation name
+              files:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: File identifier
+                    name:
+                      type: string
+                      readOnly: true
+                      description: File name
+                  required:
+                    - id
+                    - name
+                  description: Files requested for the observation
+            required:
+              - id
+              - name
+              - files
+        created_at:
+          type: string
+          format: date-time
+          description: When the data request was made
+      required:
+        - id
+        - observations
+        - created_at
+
+    # user
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: User identifier
+        username:
+          type: string
+          description: Username
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password
+        email:
+          type: string
+          format: email
+          description: Email address
+        full_name:
+          type: string
+          minLength: 1
+          description: Full name, including first name(s) and surname
+        salutation:
+          type: string
+          minLength: 1
+          description: How the user wants to be addressed (such as "Joe" or "Joe Doe")
+      required:
+        - id
+        - username
+        - password
+        - email
+        - full_name
+        - salutation
+
+    # user patch
+    UserPatch:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password
+        email:
+          type: string
+          format: email
+          description: Email address
+        full_name:
+          type: string
+          minLength: 1
+          description: Full name, including first name(s) and surname
+        salutation:
+          type: string
+          minLength: 1
+          description: How the user wants to be addressed (such as "Joe" or "Joe Doe")
+
+    # linked account
+    LinkedAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Linked account identifier
+        provider_id:
+          type: string
+          description: Identifier of the account provider
+        username:
+          type: string
+          description: Username for the linked account
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password for the linked account
+      required:
+        - id
+        - provider_id
+        - username
+        - password
+
+    # data provider
+    DataProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          description : Data provider identifier
+        name:
+          type: string
+          description: Name of the data provider
+      required:
+        - id
+        - name
