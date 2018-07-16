@@ -102,6 +102,9 @@ paths:
                   description: >
                     Identifiers of the observations for which additional calibrations are
                     requested
+              required:
+                - for_observations
+        required: true
       responses:
         "200":
           description: OK
@@ -394,7 +397,7 @@ components:
         'WWW-Authenticate':
           schema:
             type: string
-            description: Information o how to authenticate correctly
+          description: Information on how to authenticate correctly
       content:
         application/json:
           schema:
@@ -440,6 +443,10 @@ components:
         metadata:
           type: object
           properties:
+            data_taken_at:
+              type: string
+              format: date-time
+              description: When the data for this file was taken
             target:
               type: object
               properties:
@@ -456,15 +463,24 @@ components:
                 type:
                   type: string
                   description: Target type
+              required:
+                - ra
+                - dec
+                - type
           additionalProperties: true
+          required:
+            - data_taken_at
         fits_headers:
           type: string
-
-          description: FITS headers, exactly as included in the file
+          description: >
+            FITS headers, exactly as included in the file. These are included if the user
+            may download the file data.
         thumbnail:
           type: string
           format: byte
-          description: Base64-encoded thumbnail image
+          description: >
+            Base64-encoded thumbnail image. This is included if the user may download the
+            file data.
       required:
         - id
         - name
