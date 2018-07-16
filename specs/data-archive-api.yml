@@ -26,15 +26,57 @@ paths:
     post:
       summary: Observation search
       description: >
-        Search for observations using a set of search parameters.
+        Create a search for obaervations. The `search_id` identifier returned by the
+        request can be used as the `search_id` query parameter value in a
+        `GET /observations` request.
       tags: [observations]
-      operationId: searchObservations
+      operationId: createObservationSearch
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ObservationSearch'
+      responses:
+        "200":
+          description: OK
+          headers:
+            Location:
+              schema:
+                type: string
+                format: URI
+              description: URI for requesting the search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  search_id:
+                    type: string
+                    description: Identifier of the created search
+                required:
+                  - search_id
+
+  /observations:
+    get:
+      summary: Search results for an observation search
+      description: Get the results of a previously defined observation search
+      tags: [observations]
+      operationId: getObservations
+      parameters:
+        - name: search_id
+          in: query
+          schema:
+            type: string
+          required: false
+          description: Identifier of a previously defined search
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          required: false
+          description: Maximum number of search results to return
       responses:
         "200":
           description: OK
@@ -50,6 +92,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        "404":
+          $ref: '#/components/responses/NotFound'
 
   /files/{file_id}:
     parameters:
@@ -85,8 +129,10 @@ paths:
     post:
       summary: Calibration search
       description: >
-        Search for additional calibrations (standards) which can be used for an observation
-        but do not belong to the observation itself.
+        Create a search for additional calibrations (standards) which can be used for an
+        observation but do not belong to the observation itself. The `search_id` identifier
+        returned by the request can be used as the `search_id` query parameter value in a
+        `GET /calibrations` request.
       tags: [files]
       operationId: searchCalibrations
       requestBody:
@@ -114,8 +160,31 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/File'
+
+  /calibrations:
+    get:
+      summary: Search results for a calibration search
+      description: Search results for a calibration search
+      tags: [files]
+      parameters:
+        - name: search_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: URI
+          description: Identifier of a previously defined search
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/File'
         "400":
-          description: Some of the observation identifiers do not exist
+          description: Some of the observation identifiers in the search do not exist
           content:
             application/json:
               schema:
@@ -517,10 +586,6 @@ components:
           items:
             $ref: '#/components/schemas/ObservationSearchParam'
           description: search parameters
-        limit:
-          type: integer
-          minimum: 1
-          description: Maximum number of search results to return
       required:
         - parameters
 
