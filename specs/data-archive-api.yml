@@ -28,6 +28,7 @@ paths:
       description: >
         Search for observations using a set of search parameters.
       tags: [observations]
+      operationId: searchObservations
       requestBody:
         required: true
         content:
@@ -63,6 +64,7 @@ paths:
       description: >
         Get metadata for a FITS data file specified by its identifier.
       tags: [files]
+      operationId: getFile
       security:
         - BearerAuth: []
       responses:
@@ -86,6 +88,7 @@ paths:
         Search for additional calibrations (standards) which can be used for an observation
         but do not belong to the observation itself.
       tags: [files]
+      operationId: searchCalibrations
       requestBody:
         content:
           application/json:
@@ -122,6 +125,7 @@ paths:
         Get the data requests made by the user. The number may be limited, and if so, the
         latest requests are returned.
       tags: [data requests]
+      operationId: getDataRequests
       security:
         - BearerAuth: []
       responses:
@@ -138,6 +142,7 @@ paths:
       description: >
         Make a data request for downloading a set of FITS files
       tags: [data requests]
+      operationId: createDataRequest
       security:
         - BearerAuth: []
       requestBody:
@@ -184,6 +189,7 @@ paths:
         Do not request the files in this data request any longer. If the same files are
         included in another request, they will still be requested as part of that request.
       tags: [data requests]
+      operationId: deleteDataRequest
       security:
         - BearerAuth: []
       responses:
@@ -201,6 +207,7 @@ paths:
       summary: Register a user
       description: Register a new user of the data archive
       tags: [users]
+      operationId: createUser
       requestBody:
         required: true
         content:
@@ -239,6 +246,7 @@ paths:
       summary: Update a user
       description: Update some details of a data archive user
       tags: [users]
+      operationId: updateUser
       security:
         - BearerAuth: []
       requestBody:
@@ -270,6 +278,7 @@ paths:
       summary: User
       description: Get the details of a data archive user
       tags: [users]
+      operationId: getUser
       security:
         - BearerAuth: []
       responses:
@@ -291,6 +300,7 @@ paths:
       summary: Linked accounts for the user
       description: Get the linked accounts for the user
       tags: [linked accounts]
+      operationId: getLinkedAccounts
       security:
         - BearerAuth: []
       responses:
@@ -309,6 +319,7 @@ paths:
       summary: Link an account
       description: Link an account for the user
       tags: [linked accounts]
+      operationId: linkAccount
       security:
         - BearerAuth: []
       responses:
@@ -342,6 +353,7 @@ paths:
       summary: Unlink the account
       description: Unklink the linked account
       tags: [linked accounts]
+      operationId: unlinkAccount
       security:
         - BearerAuth: []
       responses:
@@ -359,6 +371,7 @@ paths:
       summary: Data providers
       description: Providers of data for the data archive
       tags: [miscellaneous]
+      operationId: getDataProviders
       responses:
         "200":
           description: OK
