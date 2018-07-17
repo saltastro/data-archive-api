@@ -3,21 +3,53 @@ openapi: "3.0.0"
 info:
   title: SAAO/SALT data archive API
   version: "0.1.0"
+  description: >
+    <p>
+    An API for programmatically accessing the SAAO/SALT archive of telescope observation
+    data.
+    </p>
+    <p>
+    The API allows you to request metadata for all observations in the archive, as well
+    as to view more in-depth details and to request the data files if the data is public
+    or if you are an investigator for the observation.
+    </p>
+    <p>
+    A typical workflow would be to first use `POST /observations/search` to define a search
+    for a set of search parameters. This returns a search id that you can then use as a query
+    parameter in a `GET /observations` request.
+    </p>
+    <p>
+    If you are the investigator, you may get more details of an observation file by means of
+    a `GET /files/{file_id}` request. These details include the FITS headers and a thumbnail
+    image.
+    </p>
+    <p>
+    You may request data files using `POST /data-requests`. You will receive an email
+    notification once all the requested data is available. You may also use `GET
+    /data-requests` to check the status of your requests.
+    </p>
+    <p>
+    Files can be downloaded using `GET /files/{file_id}` once they have been made available.
+    </p>
+    <p>
+    Registration is possible by using `POST /users`. In order to be identifiable as an
+    investigator (and hence have full access to your observational data), you need to link
+    your user accounts for the telescopes concerned. You may use `POST /linked-accounts` for
+    doing this. It is possible to link multiple accopunts for a telescope.
+    </p>
 
 tags:
   - name: observations
     description:
-      Observations including acquisition, science and calibration files
+      Observations
   - name: files
-    description: FITS files
+    description: FITS file details
   - name: data requests
     description: Requests for FITS files
   - name: users
-    description: Registered users of the data archive
+    description: User accounts
   - name: linked accounts
-    description: >
-      Accounts for telescope user accounts, such as the
-      [SALT Web Manager](https://www.salt.ac.za)
+    description: Linked user accounts for identifying the user as investigator
   - name: miscellaneous
     description: Miscellaneous API endpoints
 
@@ -26,9 +58,17 @@ paths:
     post:
       summary: Observation search
       description: >
-        Create a search for obaervations. The `search_id` identifier returned by the
-        request can be used as the `search_id` query parameter value in a
-        `GET /observations` request.
+        <p>
+        Define a search for observations. The search is not executed, but an identifier
+        for it is returned. You may use this identifier as query parameter in a `GET
+        /observations` request to carry out the search and get its results.
+        </p>
+        <p>
+        You may supply a set of search parameters. Each of these must have a keyword,
+        a value and an operator such as `=`, `<` or `LIKE`. An expression `a LIKE b` is
+        true if `b` is a substring of `a`. (Note to SQL users: Do not wrap the comparison
+        value `b` in % signs, e.g. use `NGC` rather than `%NGC%`.)
+        </p>
       tags: [observations]
       operationId: createObservationSearch
       requestBody:
@@ -59,8 +99,13 @@ paths:
 
   /observations:
     get:
-      summary: Search results for an observation search
-      description: Get the results of a previously defined observation search
+      summary: Get observations
+      description: >
+        Search and return observations. If a search identifier is given, the coprresponding
+        search is executed and its results are returned. Otherwise the latest observations are
+        returned. You may limit the number of observations returned with the `limit`
+        parameter. It is up to the server how many results to return, but the number
+        will not be larger than the number specified in the `limit` parameter.
       tags: [observations]
       operationId: getObservations
       parameters:
@@ -102,11 +147,14 @@ paths:
         required: true
         schema:
           type: string
-        description: Identifier of the requested file
+        description: File identifier
     get:
-      summary: Data file
+      summary: Get metadata for a FITS file
       description: >
-        Get metadata for a FITS data file specified by its identifier.
+        Get metadata for a FITS data file specified by its identifier. File metadata and
+        a thumnail image are returned. You are only allowed access to this resource if
+        the data is public or if you are an investigator for the observation to which it
+        belongs.
       tags: [files]
       operationId: getFile
       security:
@@ -127,12 +175,12 @@ paths:
 
   /calibrations/search:
     post:
-      summary: Calibration search
+      summary: Define alibration search
       description: >
-        Create a search for additional calibrations (standards) which can be used for an
-        observation but do not belong to the observation itself. The `search_id` identifier
-        returned by the request can be used as the `search_id` query parameter value in a
-        `GET /calibrations` request.
+        Create a search for additional calibrations (standards) which can be used for
+        calibrating an observation but do not belong to the observation itself. The search
+        is not executed, but an identifier for it is returned. This identifier may be used
+        in a `GET /calibrations` request.
       tags: [files]
       operationId: searchCalibrations
       requestBody:
@@ -163,8 +211,9 @@ paths:
 
   /calibrations:
     get:
-      summary: Search results for a calibration search
-      description: Search results for a calibration search
+      summary: Search for additional calibrations.
+      description: >
+        Execute a previously defined calibration search and return the search results.
       tags: [files]
       parameters:
         - name: search_id
@@ -182,7 +231,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/File'
+                  $ref: '#/components/schemas/AdditionalObservationCalibrations'
         "400":
           description: Some of the observation identifiers in the search do not exist
           content:
@@ -606,12 +655,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/File'
-          description: FITS files taken during the observation
+          description: >
+            FITS files taken during the observation. These do not include any additional
+            calibrations (standards) not taken as part of the observation.
       required:
         - id
         - name
         - available_from
         - files
+
+    # additional observation calibrations
+    AdditionalObservationCalibrations:
+      properties:
+        observation_id:
+          type: string
+          description: Observation identifier
+        observation_ids:
+          type: string
+          description: Human-friendly name of the observation
+        calibrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/File'
+          description: >
+            Additional calibrations (standards) for the observation. These do not include
+            any calibrations taken as part of the observation itself.
+      required:
+        - observation_id
+        - observation_name
+        - calibrations
 
     # data request
     DataRequest:
