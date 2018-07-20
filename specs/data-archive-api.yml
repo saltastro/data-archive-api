@@ -4,48 +4,42 @@ info:
   title: SAAO/SALT data archive API
   version: "0.1.0"
   description: >
-    <p>
     An API for programmatically accessing the SAAO/SALT archive of telescope observation
     data.
-    </p>
-    <p>
+    <br><br>
     The API allows you to request metadata for all observations in the archive, as well
     as to view more in-depth details and to request the data files if the data is public
     or if you are an investigator for the observation.
-    </p>
-    <p>
+    <br><br>
     A typical workflow would be to first use `POST /observations/search` to define a search
     for a set of search parameters. This returns a search id that you can then use as a query
     parameter in a `GET /observations` request.
-    </p>
-    <p>
+    <br><br>
     If you are the investigator, you may get more details of an observation file by means of
     a `GET /files/{file_id}` request. These details include the FITS headers and a thumbnail
     image.
-    </p>
-    <p>
+    <br><br>
     You may request data files using `POST /data-requests`. You will receive an email
     notification once all the requested data is available. You may also use `GET
     /data-requests` to check the status of your requests.
-    </p>
-    <p>
-    Files can be downloaded using `GET /files/{file_id}` once they have been made available.
-    </p>
-    <p>
+    <br><br>
+    Files can be downloaded using `GET /files/{file_id}` (for a single file) or `GET
+    observations/{observation_id}` (for all files related to the observation) or `GET
+    data-requests/{request_id}` once they have been made available.
+    <br><br>
     Registration is possible by using `POST /users`. In order to be identifiable as an
     investigator (and hence have full access to your observational data), you need to link
     your user accounts for the telescopes concerned. You may use `POST /linked-accounts` for
     doing this. It is possible to link multiple accopunts for a telescope.
-    </p>
 
 tags:
   - name: observations
     description:
       Observations
   - name: files
-    description: FITS file details
+    description: Data files
   - name: data requests
-    description: Requests for FITS files
+    description: Requests for data files
   - name: users
     description: User accounts
   - name: linked accounts
@@ -56,19 +50,16 @@ tags:
 paths:
   /observations/search:
     post:
-      summary: Observation search
+      summary: Define an observation search
       description: >
-        <p>
         Define a search for observations. The search is not executed, but an identifier
         for it is returned. You may use this identifier as query parameter in a `GET
         /observations` request to carry out the search and get its results.
-        </p>
-        <p>
+        <br><br>
         You may supply a set of search parameters. Each of these must have a keyword,
         a value and an operator such as `=`, `<` or `LIKE`. An expression `a LIKE b` is
         true if `b` is a substring of `a`. (Note to SQL users: Do not wrap the comparison
         value `b` in % signs, e.g. use `NGC` rather than `%NGC%`.)
-        </p>
       tags: [observations]
       operationId: createObservationSearch
       requestBody:
@@ -99,13 +90,18 @@ paths:
 
   /observations:
     get:
-      summary: Get observations
+      summary: Search for observations
       description: >
         Search and return observations. If a search identifier is given, the coprresponding
         search is executed and its results are returned. Otherwise the latest observations are
         returned. You may limit the number of observations returned with the `limit`
         parameter. It is up to the server how many results to return, but the number
         will not be larger than the number specified in the `limit` parameter.
+        <br><br>
+        An observation has a name and list of FITS file objects, which in turn include a
+        filename and metadata. In SALT terms, an observation is a block. The FITS files
+        include all data taken as part of the observation, including acquisition and
+        calibration files, unless you explicitly select the type of data to include.
       tags: [observations]
       operationId: getObservations
       parameters:
@@ -140,6 +136,43 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
 
+  /observations/{observation_id}:
+    get:
+      summary: Get the files related to an observation
+      description: >
+        Get the files related to an observation. These include all data taken during
+        the observation, calibrations and standards taken at some other time, and
+        documentation.
+        <br><br>
+        The files are returned as a gzipped tar archive. Raw, produced and reduced data files
+        are included, as available.
+      tags: [observations]
+      operationId: getObservation
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="observation1.tar.gz`"`)
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: Gzipped tar file of FITS files and documentation
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
   /files/{file_id}:
     parameters:
       - name: file_id
@@ -149,12 +182,14 @@ paths:
           type: string
         description: File identifier
     get:
-      summary: Get metadata for a FITS file
+      summary: Get a data file or details about it
       description: >
-        Get metadata for a FITS data file specified by its identifier. File metadata and
-        a thumnail image are returned. You are only allowed access to this resource if
-        the data is public or if you are an investigator for the observation to which it
-        belongs.
+        Get details for a file specified by its identifier, or the file itself.
+        <br><br>
+        The returned details depend on the file type (FITS file or documentation) and
+        whether the user is allowed to access thec file data. The filename and description
+        are always returned. The FITS headers and thumbnail are only included in the response
+        if the user is allowed to view them.
       tags: [files]
       operationId: getFile
       security:
@@ -162,10 +197,39 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="sp20180704-005.fits"`)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/File'
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Filename
+                  description:
+                    type: string
+                    description: Description of the file content
+                  fits_headers:
+                    type: string
+                    description: FITS headers, exactly as included in the file
+                  thumbnail:
+                    type: string
+                    format: byte
+                    description: Base64-encoded thumbnail image
+                required:
+                  - name
+                  - description
+            '*/*':
+              schema:
+                type: string
+                format: binary
+                description: File
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -175,7 +239,7 @@ paths:
 
   /calibrations/search:
     post:
-      summary: Define alibration search
+      summary: Define a search for additional calibrations
       description: >
         Create a search for additional calibrations (standards) which can be used for
         calibrating an observation but do not belong to the observation itself. The search
@@ -211,7 +275,7 @@ paths:
 
   /calibrations:
     get:
-      summary: Search for additional calibrations.
+      summary: Search for additional calibrations
       description: >
         Execute a previously defined calibration search and return the search results.
       tags: [files]
@@ -241,7 +305,7 @@ paths:
 
   /data-requests:
     get:
-      summary: Data request
+      summary: Get data requests
       description: >
         Get the data requests made by the user. The number may be limited, and if so, the
         latest requests are returned.
@@ -259,9 +323,9 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
-      summary: 'Data request for FITS files'
+      summary: 'Create a request for data files'
       description: >
-        Make a data request for downloading a set of FITS files
+        Make a data request for downloading a set of data files
       tags: [data requests]
       operationId: createDataRequest
       security:
@@ -304,11 +368,46 @@ paths:
         schema:
           type: string
         description: Identifier of the deleted data request
-    delete:
-      summary: Delete the data request
+    get:
+      summary: Get requested files
       description: >
-        Do not request the files in this data request any longer. If the same files are
-        included in another request, they will still be requested as part of that request.
+        Get all the files requested in the specified data request. A gzipped tar archive
+        is returned.
+      tags: [data-requests]
+      operationId: getDataRequest
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="request.tar.gz`"`)
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: The requested files
+        "400":
+          description: >
+            Some of the requested data files are currently unavailable for downloading.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a request for data files
+      description: >
+        Delete the datac request withe the given identifier. If same files in the deleted
+        request are included in another request, they will still be requested as part of that
+        request.
       tags: [data requests]
       operationId: deleteDataRequest
       security:
@@ -325,8 +424,8 @@ paths:
 
   /users:
     post:
-      summary: Register a user
-      description: Register a new user of the data archive
+      summary: Create a user account
+      description: Create a user account for the data archive
       tags: [users]
       operationId: createUser
       requestBody:
@@ -340,7 +439,7 @@ paths:
           description: Created
           headers:
             Location:
-              description: URI for the newly registered user
+              description: URI for the created user account
               schema:
                 type: string
                 format: URI
@@ -349,7 +448,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         "400":
-          description: The username exists already or the password is too weak
+          description: >
+            Another user is using the username already, or the password is too weak.
           content:
             application/json:
               schema:
@@ -364,8 +464,8 @@ paths:
           type: string
         description: User identifier
     patch:
-      summary: Update a user
-      description: Update some details of a data archive user
+      summary: Update a user account
+      description: Update some details of a data archive user account
       tags: [users]
       operationId: updateUser
       security:
@@ -384,7 +484,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         "400":
-          description: The username exists already or the password is too weak
+          description: >
+            Another user is using the username already, or the password is too weak.
           content:
             application/json:
               schema:
@@ -396,8 +497,8 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
     get:
-      summary: User
-      description: Get the details of a data archive user
+      summary: Get user account details
+      description: Get the details of a data archive user account.
       tags: [users]
       operationId: getUser
       security:
@@ -418,8 +519,8 @@ paths:
 
   /linked-accounts:
     get:
-      summary: Linked accounts for the user
-      description: Get the linked accounts for the user
+      summary: Get the linked accounts for the user
+      description: Get the linked accounts for the user.
       tags: [linked accounts]
       operationId: getLinkedAccounts
       security:
@@ -438,7 +539,7 @@ paths:
 
     post:
       summary: Link an account
-      description: Link an account for the user
+      description: Link an account for the user.
       tags: [linked accounts]
       operationId: linkAccount
       security:
@@ -472,7 +573,7 @@ paths:
 
     delete:
       summary: Unlink the account
-      description: Unklink the linked account
+      description: Unklink the the linked account.
       tags: [linked accounts]
       operationId: unlinkAccount
       security:
@@ -489,8 +590,8 @@ paths:
 
   /data-providers:
     get:
-      summary: Data providers
-      description: Providers of data for the data archive
+      summary: Get the data providers
+      description: Get a list of the providers of data for the data archive.
       tags: [miscellaneous]
       operationId: getDataProviders
       responses:
@@ -588,17 +689,6 @@ components:
           additionalProperties: true
           required:
             - data_taken_at
-        fits_headers:
-          type: string
-          description: >
-            FITS headers, exactly as included in the file. These are included if the user
-            may download the file data.
-        thumbnail:
-          type: string
-          format: byte
-          description: >
-            Base64-encoded thumbnail image. This is included if the user may download the
-            file data.
       required:
         - id
         - name
@@ -704,6 +794,21 @@ components:
                 type: string
                 readOnly: true
                 description: Observation name
+              status:
+                type: string
+                enum:
+                  - available
+                  - pending
+                  - failed
+                  - requestable
+                readOnly: true
+                description: >
+                  Status of the request for this observation. All the files may be ready
+                  for download (`available`), the request may be in progress (`pending`),
+                  the requestmay have failed for some of the files (`failed`), or the
+                  files may have been removed from the download area but may be requested
+                  again (`requestable`).
+
               files:
                 type: array
                 items:
