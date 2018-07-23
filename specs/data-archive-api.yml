@@ -1,0 +1,945 @@
+openapi: "3.0.0"
+
+info:
+  title: SAAO/SALT data archive API
+  version: "0.1.0"
+  description: >
+    An API for programmatically accessing the SAAO/SALT archive of telescope observation
+    data.
+    <br><br>
+    The API allows you to request metadata for all observations in the archive, as well
+    as to view more in-depth details and to request the data files if the data is public
+    or if you are an investigator for the observation.
+    <br><br>
+    A typical workflow would be to first use `POST /observations/search` to define a search
+    for a set of search parameters. This returns a search id that you can then use as a query
+    parameter in a `GET /observations` request.
+    <br><br>
+    If you are the investigator, you may get more details of an observation file by means of
+    a `GET /files/{file_id}` request. These details include the FITS headers and a thumbnail
+    image.
+    <br><br>
+    You may request data files using `POST /data-requests`. You will receive an email
+    notification once all the requested data is available. You may also use `GET
+    /data-requests` to check the status of your requests.
+    <br><br>
+    Files can be downloaded using `GET /files/{file_id}` (for a single file) or `GET
+    observations/{observation_id}` (for all files related to the observation) or `GET
+    data-requests/{request_id}` once they have been made available.
+    <br><br>
+    Registration is possible by using `POST /users`. In order to be identifiable as an
+    investigator (and hence have full access to your observational data), you need to link
+    your user accounts for the telescopes concerned. You may use `POST /linked-accounts` for
+    doing this. It is possible to link multiple accopunts for a telescope.
+
+tags:
+  - name: observations
+    description:
+      Observations
+  - name: files
+    description: Data files
+  - name: data requests
+    description: Requests for data files
+  - name: users
+    description: User accounts
+  - name: linked accounts
+    description: Linked user accounts for identifying the user as investigator
+  - name: miscellaneous
+    description: Miscellaneous API endpoints
+
+paths:
+  /observations/search:
+    post:
+      summary: Define an observation search
+      description: >
+        Define a search for observations. The search is not executed, but an identifier
+        for it is returned. You may use this identifier as query parameter in a `GET
+        /observations` request to carry out the search and get its results.
+        <br><br>
+        You may supply a set of search parameters. Each of these must have a keyword,
+        a value and an operator such as `=`, `<` or `LIKE`. An expression `a LIKE b` is
+        true if `b` is a substring of `a`. (Note to SQL users: Do not wrap the comparison
+        value `b` in % signs, e.g. use `NGC` rather than `%NGC%`.)
+      tags: [observations]
+      operationId: createObservationSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationSearch'
+      responses:
+        "200":
+          description: OK
+          headers:
+            Location:
+              schema:
+                type: string
+                format: URI
+              description: URI for requesting the search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  search_id:
+                    type: string
+                    description: Identifier of the created search
+                required:
+                  - search_id
+
+  /observations:
+    get:
+      summary: Search for observations
+      description: >
+        Search and return observations. If a search identifier is given, the coprresponding
+        search is executed and its results are returned. Otherwise the latest observations are
+        returned. You may limit the number of observations returned with the `limit`
+        parameter. It is up to the server how many results to return, but the number
+        will not be larger than the number specified in the `limit` parameter.
+        <br><br>
+        An observation has a name and list of FITS file objects, which in turn include a
+        filename and metadata. In SALT terms, an observation is a block. The FITS files
+        include all data taken as part of the observation, including acquisition and
+        calibration files, unless you explicitly select the type of data to include.
+      tags: [observations]
+      operationId: getObservations
+      parameters:
+        - name: search_id
+          in: query
+          schema:
+            type: string
+          required: false
+          description: Identifier of a previously defined search
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          required: false
+          description: Maximum number of search results to return
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Observation'
+        "400":
+          description: A search parameter has an invalid value or operator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /observations/{observation_id}:
+    parameters:
+      - name: observation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Observation identifier
+    get:
+      summary: Get the files related to an observation
+      description: >
+        Get the files related to an observation. These include all data taken during
+        the observation, calibrations and standards taken at some other time, and
+        documentation.
+        <br><br>
+        The files are returned as a gzipped tar archive. Raw, produced and reduced data files
+        are included, as available.
+      tags: [observations]
+      operationId: getObservation
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="observation1.tar.gz`"`)
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: Gzipped tar file of FITS files and documentation
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /files/{file_id}:
+    parameters:
+      - name: file_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: File identifier
+    get:
+      summary: Get a data file or details about it
+      description: >
+        Get details for a file specified by its identifier, or the file itself.
+        <br><br>
+        The returned details depend on the file type (FITS file or documentation) and
+        whether the user is allowed to access thec file data. The filename and description
+        are always returned. The FITS headers and thumbnail are only included in the response
+        if the user is allowed to view them.
+      tags: [files]
+      operationId: getFile
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="sp20180704-005.fits"`)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Filename
+                  description:
+                    type: string
+                    description: Description of the file content
+                  fits_headers:
+                    type: string
+                    description: FITS headers, exactly as included in the file
+                  thumbnail:
+                    type: string
+                    format: byte
+                    description: Base64-encoded thumbnail image
+                required:
+                  - name
+                  - description
+            '*/*':
+              schema:
+                type: string
+                format: binary
+                description: File
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /calibrations/search:
+    post:
+      summary: Define a search for additional calibrations
+      description: >
+        Create a search for additional calibrations (standards) which can be used for
+        calibrating an observation but do not belong to the observation itself. The search
+        is not executed, but an identifier for it is returned. This identifier may be used
+        in a `GET /calibrations` request.
+      tags: [files]
+      operationId: searchCalibrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                for_observations:
+                  type: array
+                  items:
+                    type: string
+                  description: >
+                    Identifiers of the observations for which additional calibrations are
+                    requested
+              required:
+                - for_observations
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/File'
+
+  /calibrations:
+    get:
+      summary: Search for additional calibrations
+      description: >
+        Execute a previously defined calibration search and return the search results.
+      tags: [files]
+      parameters:
+        - name: search_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: URI
+          description: Identifier of a previously defined search
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdditionalObservationCalibrations'
+        "400":
+          description: Some of the observation identifiers in the search do not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-requests:
+    get:
+      summary: Get data requests
+      description: >
+        Get the data requests made by the user. The number may be limited, and if so, the
+        latest requests are returned.
+      tags: [data requests]
+      operationId: getDataRequests
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: 'Create a request for data files'
+      description: >
+        Make a data request for downloading a set of data files
+      tags: [data requests]
+      operationId: createDataRequest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URI of the new data request
+              schema:
+                type: string
+                format: URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRequest'
+        "400":
+          description: Some of the observation or file identifiers do not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /data-requests/{request_id}:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Identifier of the deleted data request
+    get:
+      summary: Get requested files
+      description: >
+        Get all the files requested in the specified data request. A gzipped tar archive
+        is returned.
+      tags: [data-requests]
+      operationId: getDataRequest
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: >
+                The suggested filename for the downloaded file (e.g., `Content-Disposition:
+                attachment; filename="request.tar.gz`"`)
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: The requested files
+        "400":
+          description: >
+            Some of the requested data files are currently unavailable for downloading.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a request for data files
+      description: >
+        Delete the data request withe the given identifier. If some files in the deleted
+        request are included in another request, they will still be requested as part of that
+        request.
+      tags: [data requests]
+      operationId: deleteDataRequest
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: The request was deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users:
+    post:
+      summary: Create a user account
+      description: Create a user account for the data archive
+      tags: [users]
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URI for the created user account
+              schema:
+                type: string
+                format: URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: >
+            Another user is using the username already, or the password is too weak.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User identifier
+    patch:
+      summary: Update a user account
+      description: Update some details of a data archive user account
+      tags: [users]
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPatch'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: >
+            Another user is using the username already, or the password is too weak.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: Get user account details
+      description: Get the details of a data archive user account.
+      tags: [users]
+      operationId: getUser
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /linked-accounts:
+    get:
+      summary: Get the linked accounts for the user
+      description: Get the linked accounts for the user.
+      tags: [linked accounts]
+      operationId: getLinkedAccounts
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LinkedAccount'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Link an account
+      description: Link an account for the user.
+      tags: [linked accounts]
+      operationId: linkAccount
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedAccount'
+        "400":
+          description: >
+            The authentication credentials for the linked account are invalid, or the
+            account has been linked already.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /linked-accounts/{linked_account_id}:
+    parameters:
+      - name: linked_account_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Linked account identifier
+
+    delete:
+      summary: Unlink the account
+      description: Unlink the the linked account.
+      tags: [linked accounts]
+      operationId: unlinkAccount
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Unlinked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /data-providers:
+    get:
+      summary: Get the data providers
+      description: Get a list of the providers of data for the data archive.
+      tags: [miscellaneous]
+      operationId: getDataProviders
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataProvider'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    # HTTP 401 error
+    Unauthorized:
+      description: The request did not include valid authentication credentials
+      headers:
+        'WWW-Authenticate':
+          schema:
+            type: string
+          description: Information on how to authenticate correctly
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    # HTTP 403 error
+    Forbidden:
+      description: The request is not allowed for the user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    # HTTP 404 error
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    # error
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+      required:
+        - message
+
+    # FITS file details
+    File:
+      type: object
+      properties:
+        id:
+          type: string
+          description: File identifier
+        name:
+          type: string
+          description: Filename
+        metadata:
+          type: object
+          properties:
+            data_taken_at:
+              type: string
+              format: date-time
+              description: When the data for this file was taken
+            target:
+              type: object
+              properties:
+                ra:
+                  type: number
+                  minimum: 0
+                  maximum: 360
+                  description: Right ascension as degrees between 0 and 360.
+                dec:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                  description: Declination as degrees between -90 and 90.
+                type:
+                  type: string
+                  description: Target type
+              required:
+                - ra
+                - dec
+                - type
+          additionalProperties: true
+          required:
+            - data_taken_at
+      required:
+        - id
+        - name
+        - metadata
+
+    # observation search parameter
+    ObservationSearchParam:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: Search keyword
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+          description: Search value
+        operator:
+          type: string
+          enum: ['=', '!=', '<', '>', '<=', '>=', 'LIKE']
+          description: SQL operator `OP` for the relation `keyword` `OP` `value`
+      required:
+        - keyword
+        - value
+        - operator
+
+    # observation search parameters
+    ObservationSearch:
+      type: object
+      properties:
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationSearchParam'
+          description: search parameters
+      required:
+        - parameters
+
+    # observation
+    Observation:
+      properties:
+        id:
+          type: string
+          description: Observation identifier
+        name:
+          type: string
+          description: Human-friendly name of the observation
+        available_from:
+          type: string
+          format: date-time
+          description: When the data of the observation becomes available to the user
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/File'
+          description: >
+            FITS files taken during the observation. These do not include any additional
+            calibrations (standards) not taken as part of the observation.
+      required:
+        - id
+        - name
+        - available_from
+        - files
+
+    # additional observation calibrations
+    AdditionalObservationCalibrations:
+      properties:
+        observation_id:
+          type: string
+          description: Observation identifier
+        observation_name:
+          type: string
+          description: Human-friendly name of the observation
+        calibrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/File'
+          description: >
+            Additional calibrations (standards) for the observation. These do not include
+            any calibrations taken as part of the observation itself.
+      required:
+        - observation_id
+        - observation_name
+        - calibrations
+
+    # data request
+    DataRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Data request identifier
+        observations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Observation identifier
+              name:
+                type: string
+                readOnly: true
+                description: Observation name
+              status:
+                type: string
+                enum:
+                  - available
+                  - pending
+                  - failed
+                  - requestable
+                readOnly: true
+                description: >
+                  Status of the request for this observation. All the files may be ready
+                  for download (`available`), the request may be in progress (`pending`),
+                  the requestmay have failed for some of the files (`failed`), or the
+                  files may have been removed from the download area but may be requested
+                  again (`requestable`).
+
+              files:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: File identifier
+                    name:
+                      type: string
+                      readOnly: true
+                      description: File name
+                  required:
+                    - id
+                    - name
+                  description: Files requested for the observation
+            required:
+              - id
+              - name
+              - files
+        created_at:
+          type: string
+          format: date-time
+          description: When the data request was made
+      required:
+        - id
+        - observations
+        - created_at
+
+    # user
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: User identifier
+        username:
+          type: string
+          description: Username
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password
+        email:
+          type: string
+          format: email
+          description: Email address
+        full_name:
+          type: string
+          minLength: 1
+          description: Full name, including first name(s) and surname
+        salutation:
+          type: string
+          minLength: 1
+          description: How the user wants to be addressed (such as "Joe" or "Joe Doe")
+      required:
+        - id
+        - username
+        - password
+        - email
+        - full_name
+        - salutation
+
+    # user patch
+    UserPatch:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password
+        email:
+          type: string
+          format: email
+          description: Email address
+        full_name:
+          type: string
+          minLength: 1
+          description: Full name, including first name(s) and surname
+        salutation:
+          type: string
+          minLength: 1
+          description: How the user wants to be addressed (such as "Joe" or "Joe Doe")
+
+    # linked account
+    LinkedAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Linked account identifier
+        provider_id:
+          type: string
+          description: Identifier of the account provider
+        username:
+          type: string
+          description: Username for the linked account
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password for the linked account
+      required:
+        - id
+        - provider_id
+        - username
+        - password
+
+    # data provider
+    DataProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          description : Data provider identifier
+        name:
+          type: string
+          description: Name of the data provider
+      required:
+        - id
+        - name
