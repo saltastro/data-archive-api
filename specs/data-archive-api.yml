@@ -767,7 +767,7 @@ components:
         observation_id:
           type: string
           description: Observation identifier
-        observation_ids:
+        observation_name:
           type: string
           description: Human-friendly name of the observation
         calibrations:
