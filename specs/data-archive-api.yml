@@ -143,6 +143,7 @@ paths:
         required: true
         schema:
           type: string
+        description: Observation identifier
     get:
       summary: Get the files related to an observation
       description: >
