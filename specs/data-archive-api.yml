@@ -137,6 +137,12 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /observations/{observation_id}:
+    parameters:
+      - name: observation_id
+        in: path
+        required: true
+        schema:
+          type: string
     get:
       summary: Get the files related to an observation
       description: >
