@@ -580,7 +580,7 @@ paths:
 
     delete:
       summary: Unlink the account
-      description: Unklink the the linked account.
+      description: Unlink the the linked account.
       tags: [linked accounts]
       operationId: unlinkAccount
       security:
