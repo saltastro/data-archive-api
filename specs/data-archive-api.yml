@@ -405,7 +405,7 @@ paths:
     delete:
       summary: Delete a request for data files
       description: >
-        Delete the datac request withe the given identifier. If same files in the deleted
+        Delete the data request withe the given identifier. If some files in the deleted
         request are included in another request, they will still be requested as part of that
         request.
       tags: [data requests]
